@@ -68,8 +68,7 @@ function App() {
       <footer className="bg-white border-t mt-12">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="text-center text-sm text-gray-500">
-            <p>Dialogue Studio - Professional Dialogue Management System</p>
-            <p className="mt-1">Built with React and modern web technologies</p>
+            <p>Dialogue Studio </p>
           </div>
         </div>
       </footer>

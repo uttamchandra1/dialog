@@ -3,6 +3,7 @@ import { useDropzone } from "react-dropzone";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import DialogueService from "../services/dialogueService";
+import gptConverterService from "../services/gptConverterService";
 
 const DialogueConverter = () => {
   const [inputText, setInputText] = useState("");
@@ -15,25 +16,77 @@ const DialogueConverter = () => {
   // New state for batch processing
   const [batchDialogues, setBatchDialogues] = useState([]);
   const [showBatchMode, setShowBatchMode] = useState(false);
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [isValid, setIsValid] = useState(false);
 
-  const convertDialogueToJson = useCallback((text, scene, sequence, title) => {
-    return DialogueService.createBatchDialogueData(
-      text,
-      scene,
-      sequence,
-      title
-    );
-  }, []);
+  // New GPT conversion function
+  const convertTextToJSON = useCallback(
+    async (text, scene, sequence, title) => {
+      try {
+        const currentScene = `SCENE_${scene.padStart(2, "0")}`;
+        const jsonArray = await gptConverterService.convertToJSON(
+          text,
+          currentScene
+        );
 
-  const handleConvert = () => {
+        return {
+          metadata: {
+            scene: `SCENE_${scene.padStart(2, "0")}`,
+            sequence: `SEQUENCE_${sequence.padStart(2, "0")}`,
+            title: title || `Dialogue ${scene}-${sequence}`,
+            timestamp: new Date().toISOString(),
+          },
+          dialogues: jsonArray,
+        };
+      } catch (error) {
+        console.error("GPT conversion error:", error);
+        throw new Error(
+          "Failed to convert text using GPT. Please check your input format."
+        );
+      }
+    },
+    []
+  );
+
+  const validateInput = () => {
     if (!inputText.trim()) {
-      alert("Please enter dialogue text");
+      setValidationErrors(["Please enter dialogue text"]);
+      setIsValid(false);
+      return false;
+    }
+
+    // Basic validation - check if text has some content
+    if (inputText.trim().length < 10) {
+      setValidationErrors([
+        "Text seems too short. Please provide more content.",
+      ]);
+      setIsValid(false);
+      return false;
+    }
+
+    setValidationErrors([]);
+    setIsValid(true);
+    return true;
+  };
+
+  // Validate on input change
+  React.useEffect(() => {
+    if (inputText.trim()) {
+      validateInput();
+    } else {
+      setValidationErrors([]);
+      setIsValid(false);
+    }
+  }, [inputText]);
+
+  const handleConvert = async () => {
+    if (!validateInput()) {
       return;
     }
 
     setIsProcessing(true);
     try {
-      const jsonResult = convertDialogueToJson(
+      const jsonResult = await convertTextToJSON(
         inputText,
         sceneNumber,
         sequenceNumber,
@@ -42,38 +95,50 @@ const DialogueConverter = () => {
       setConvertedJson(jsonResult);
     } catch (error) {
       console.error("Conversion error:", error);
-      alert("Error converting dialogue. Please check the format.");
+      alert(
+        error.message || "Error converting dialogue. Please check the format."
+      );
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleAddToBatch = () => {
-    if (!inputText.trim()) {
-      alert("Please enter dialogue text");
+  const handleAddToBatch = async () => {
+    if (!validateInput()) {
       return;
     }
 
-    const jsonResult = convertDialogueToJson(
-      inputText,
-      sceneNumber,
-      sequenceNumber,
-      dialogueTitle
-    );
+    setIsProcessing(true);
+    try {
+      const jsonResult = await convertTextToJSON(
+        inputText,
+        sceneNumber,
+        sequenceNumber,
+        dialogueTitle
+      );
 
-    setBatchDialogues((prev) => [
-      ...prev,
-      {
-        ...jsonResult,
-        id: Date.now() + Math.random(),
-        inputText: inputText, // Keep original text for editing
-      },
-    ]);
+      setBatchDialogues((prev) => [
+        ...prev,
+        {
+          ...jsonResult,
+          id: Date.now() + Math.random(),
+          inputText: inputText, // Keep original text for editing
+        },
+      ]);
 
-    // Clear form for next entry
-    setInputText("");
-    setDialogueTitle("");
-    setSequenceNumber((prev) => String(parseInt(prev) + 1).padStart(2, "0"));
+      // Clear form for next entry
+      setInputText("");
+      setDialogueTitle("");
+      setSequenceNumber((prev) => String(parseInt(prev) + 1).padStart(2, "0"));
+      setValidationErrors([]);
+    } catch (error) {
+      console.error("Batch conversion error:", error);
+      alert(
+        error.message || "Error converting dialogue. Please check the format."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRemoveFromBatch = (id) => {
@@ -240,6 +305,44 @@ const DialogueConverter = () => {
           </div>
         </div>
 
+        {/* Format Guide */}
+        <div className="mt-6 bg-blue-50 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-blue-800 mb-3">
+            GPT-Powered Format Guide
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="bg-white rounded p-3">
+              <h4 className="font-medium text-gray-800 mb-2">Narration</h4>
+              <code className="text-xs bg-gray-100 p-1 rounded block">
+                Any descriptive text without a speaker
+              </code>
+            </div>
+            <div className="bg-white rounded p-3">
+              <h4 className="font-medium text-gray-800 mb-2">
+                Character Dialogue
+              </h4>
+              <code className="text-xs bg-gray-100 p-1 rounded block">
+                CharacterName: "Dialogue text here"
+              </code>
+            </div>
+            <div className="bg-white rounded p-3">
+              <h4 className="font-medium text-gray-800 mb-2">Choice Block</h4>
+              <code className="text-xs bg-gray-100 p-1 rounded block">
+                Choice: Question text here
+                <br />
+                • Option 1 text
+                <br />
+                • Option 2 text
+                <br />• Option 3 text
+              </code>
+            </div>
+          </div>
+          <div className="mt-3 text-sm text-blue-700">
+            <strong>Note:</strong> GPT will intelligently parse your text and
+            ignore frame numbers, section headers, and other reference labels.
+          </div>
+        </div>
+
         {/* Text Input */}
         <div className="mt-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -248,11 +351,63 @@ const DialogueConverter = () => {
           <textarea
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Paste your dialogue text here...&#10;&#10;Example:&#10;Watson: You're unusually still tonight, Holmes.&#10;Holmes: Because I have a puzzle before me."
-            rows={12}
+            placeholder={`Paste your dialogue text here...
+
+Example formats:
+
+FRAME 6
+
+Dialogue:
+FLUX: "I can stimulate your EchoMod. Bring back suppressed grief."
+ASH: "Do it."
+Memories crash in: Riven leaving. Riven screaming. Ash alone in a field of neon rain.
+ASH: "Riven… I wasn't ready to let you go."
+
+OR
+
+Holmes: "You're unusually still tonight, Watson."
+Watson: "Because I have a puzzle before me."
+
+OR
+
+Choice: How does Watson react to the letter?
+• She outplayed you.
+• You admire her, don't you?
+• Say nothing.
+
+GPT will automatically detect the format and convert it appropriately.`}
+            rows={15}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
           />
         </div>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div
+            className="mt-4 bg-red-100 border border-red-200 text-red-800 px-4 py-3 rounded relative"
+            role="alert"
+          >
+            <strong className="font-bold">Format Errors:</strong>
+            <ul className="mt-1 list-disc list-inside">
+              {validationErrors.map((error, index) => (
+                <li key={index}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {isValid && inputText.trim() && (
+          <div
+            className="mt-4 bg-green-100 border border-green-200 text-green-800 px-4 py-3 rounded relative"
+            role="alert"
+          >
+            <strong className="font-bold">✓ Format Valid!</strong>
+            <span className="ml-2">
+              Your dialogue format is ready for GPT conversion.
+            </span>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="mt-6 flex space-x-4">
@@ -262,16 +417,16 @@ const DialogueConverter = () => {
               disabled={isProcessing || !inputText.trim()}
               className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              {isProcessing ? "Converting..." : "Convert to JSON"}
+              {isProcessing ? "Converting with GPT..." : "Convert to JSON"}
             </button>
           ) : (
             <>
               <button
                 onClick={handleAddToBatch}
-                disabled={!inputText.trim()}
+                disabled={isProcessing || !inputText.trim()}
                 className="flex-1 bg-green-600 text-white py-3 px-6 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
-                Add to Batch
+                {isProcessing ? "Adding to Batch..." : "Add to Batch"}
               </button>
               <button
                 onClick={handleExportBatch}
@@ -324,18 +479,45 @@ const DialogueConverter = () => {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold text-gray-800">
-              Generated JSON
+              Generated JSON (GPT-Converted)
             </h3>
-            <button
-              onClick={handleExport}
-              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
-            >
-              Export JSON
-            </button>
+            <div className="space-x-2">
+              <button
+                onClick={() => {
+                  const exportData =
+                    DialogueService.createExportStructure(convertedJson);
+                  const jsonString = JSON.stringify(exportData, null, 2);
+                  const blob = new Blob([jsonString], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `dialogue_${sceneNumber}_${sequenceNumber}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
+              >
+                Export Clean JSON
+              </button>
+              <button
+                onClick={handleExport}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Export Full JSON
+              </button>
+            </div>
           </div>
           <div className="bg-gray-50 rounded-md p-4 overflow-x-auto">
             <pre className="text-sm text-gray-800 whitespace-pre-wrap">
-              {JSON.stringify(convertedJson, null, 2)}
+              {JSON.stringify(
+                DialogueService.createExportStructure(convertedJson),
+                null,
+                2
+              )}
             </pre>
           </div>
         </div>
