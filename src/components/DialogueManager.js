@@ -286,15 +286,28 @@ const DialogueManager = () => {
                           {selectedDialogueContent.dialogues
                             .slice(0, 3)
                             .map((dialogue, index) => (
-                              <div key={index} className="text-sm mb-1">
+                              <div key={index} className="text-sm mb-2">
                                 {dialogue.type === "narration" ? (
                                   <span className="text-gray-600 italic">
                                     {dialogue.text}
                                   </span>
-                                ) : (
+                                ) : dialogue.type === "character" ? (
                                   <span>
                                     <strong>{dialogue.speaker}:</strong>{" "}
                                     {dialogue.text}
+                                  </span>
+                                ) : dialogue.type === "choice" ? (
+                                  <div className="border-l-2 border-blue-300 pl-2">
+                                    <div className="font-medium text-blue-700">
+                                      {dialogue.question}
+                                    </div>
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      {dialogue.options.length} options
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-500">
+                                    Unknown type: {dialogue.type}
                                   </span>
                                 )}
                               </div>

@@ -9,15 +9,62 @@ class DialogueService {
     }
 
     let hasValidDialogue = false;
+    let inChoiceBlock = false;
+    let choiceOptions = 0;
+    let choiceTargets = 0;
+
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
 
-      if (trimmedLine && !trimmedLine.includes(":")) {
-        errors.push(`Line ${index + 1}: Missing speaker (should contain ':')`);
-      } else if (
-        trimmedLine.includes(":") &&
-        !trimmedLine.startsWith("Dialogue")
-      ) {
+      // Check for choice block start
+      if (trimmedLine.startsWith("CHOICE:")) {
+        inChoiceBlock = true;
+        hasValidDialogue = true;
+        choiceOptions = 0;
+        choiceTargets = 0;
+        return;
+      }
+
+      // Check for choice block end
+      if (inChoiceBlock && trimmedLine.startsWith("END_CHOICE")) {
+        inChoiceBlock = false;
+        if (choiceOptions === 0) {
+          errors.push(
+            `Line ${index + 1}: Choice block must have at least one option`
+          );
+        }
+        if (choiceTargets === 0) {
+          errors.push(
+            `Line ${
+              index + 1
+            }: Choice block must have at least one target sequence`
+          );
+        }
+        return;
+      }
+
+      // Handle choice block content
+      if (inChoiceBlock) {
+        if (trimmedLine.startsWith("OPTION:")) {
+          choiceOptions++;
+        } else if (trimmedLine.startsWith("TARGET:")) {
+          choiceTargets++;
+        }
+        return;
+      }
+
+      // Check for narration
+      if (trimmedLine.startsWith("NARRATION:")) {
+        hasValidDialogue = true;
+        const narrationText = trimmedLine.substring(10).trim();
+        if (!narrationText) {
+          errors.push(`Line ${index + 1}: Empty narration text`);
+        }
+        return;
+      }
+
+      // Check for character dialogue
+      if (trimmedLine.includes(":") && !trimmedLine.startsWith("Dialogue")) {
         hasValidDialogue = true;
         const colonIndex = trimmedLine.indexOf(":");
         const speaker = trimmedLine.substring(0, colonIndex).trim();
@@ -29,12 +76,18 @@ class DialogueService {
         if (!text) {
           errors.push(`Line ${index + 1}: Empty dialogue text`);
         }
+      } else if (trimmedLine && !trimmedLine.startsWith("Dialogue")) {
+        errors.push(
+          `Line ${
+            index + 1
+          }: Invalid format. Use NARRATION:, CHARACTER:, or CHOICE: format`
+        );
       }
     });
 
     if (!hasValidDialogue) {
       errors.push(
-        "No valid dialogue found. Each line should contain a speaker and text separated by colon."
+        "No valid dialogue found. Use NARRATION:, CHARACTER:, or CHOICE: format."
       );
     }
 
@@ -96,18 +149,93 @@ class DialogueService {
     const dialogues = [];
     let currentSpeaker = "";
     let currentText = "";
+    let inChoiceBlock = false;
+    let currentChoice = null;
 
     lines.forEach((line) => {
       const trimmedLine = line.trim();
 
-      // Check if line contains speaker (ends with colon)
+      // Handle choice block start
+      if (trimmedLine.startsWith("CHOICE:")) {
+        // Save previous dialogue if exists
+        if (currentSpeaker && currentText) {
+          dialogues.push({
+            type: "character",
+            speaker: currentSpeaker,
+            text: `"${currentText.trim()}"`,
+          });
+          currentSpeaker = "";
+          currentText = "";
+        }
+
+        inChoiceBlock = true;
+        const question = trimmedLine.substring(7).trim();
+        currentChoice = {
+          type: "choice",
+          question: question,
+          options: [],
+          targetSequences: [],
+        };
+        return;
+      }
+
+      // Handle choice block end
+      if (inChoiceBlock && trimmedLine.startsWith("END_CHOICE")) {
+        inChoiceBlock = false;
+        if (currentChoice && currentChoice.options.length > 0) {
+          dialogues.push(currentChoice);
+        }
+        currentChoice = null;
+        return;
+      }
+
+      // Handle choice options
+      if (inChoiceBlock && trimmedLine.startsWith("OPTION:")) {
+        const option = trimmedLine.substring(7).trim();
+        if (currentChoice) {
+          currentChoice.options.push(`"${option}"`);
+        }
+        return;
+      }
+
+      // Handle choice targets
+      if (inChoiceBlock && trimmedLine.startsWith("TARGET:")) {
+        const target = trimmedLine.substring(7).trim();
+        if (currentChoice) {
+          currentChoice.targetSequences.push(target);
+        }
+        return;
+      }
+
+      // Handle narration
+      if (trimmedLine.startsWith("NARRATION:")) {
+        // Save previous dialogue if exists
+        if (currentSpeaker && currentText) {
+          dialogues.push({
+            type: "character",
+            speaker: currentSpeaker,
+            text: `"${currentText.trim()}"`,
+          });
+          currentSpeaker = "";
+          currentText = "";
+        }
+
+        const narrationText = trimmedLine.substring(10).trim();
+        dialogues.push({
+          type: "narration",
+          text: narrationText,
+        });
+        return;
+      }
+
+      // Handle character dialogue
       if (trimmedLine.includes(":") && !trimmedLine.startsWith("Dialogue")) {
         // Save previous dialogue if exists
         if (currentSpeaker && currentText) {
           dialogues.push({
+            type: "character",
             speaker: currentSpeaker,
-            text: currentText.trim(),
-            type: "dialogue",
+            text: `"${currentText.trim()}"`,
           });
         }
 
@@ -123,9 +251,9 @@ class DialogueService {
     // Add the last dialogue
     if (currentSpeaker && currentText) {
       dialogues.push({
+        type: "character",
         speaker: currentSpeaker,
-        text: currentText.trim(),
-        type: "dialogue",
+        text: `"${currentText.trim()}"`,
       });
     }
 
@@ -150,11 +278,28 @@ class DialogueService {
   static createExportStructure(dialogueData) {
     // Create the JSON structure matching your existing format - just the dialogues array
     return {
-      dialogues: dialogueData.dialogues.map((d) => ({
-        type: d.type || "dialogue",
-        speaker: d.speaker,
-        text: d.text,
-      })),
+      dialogues: dialogueData.dialogues.map((d) => {
+        if (d.type === "narration") {
+          return {
+            type: "narration",
+            text: d.text,
+          };
+        } else if (d.type === "character") {
+          return {
+            type: "character",
+            speaker: d.speaker,
+            text: d.text,
+          };
+        } else if (d.type === "choice") {
+          return {
+            type: "choice",
+            question: d.question,
+            options: d.options,
+            targetSequences: d.targetSequences,
+          };
+        }
+        return d;
+      }),
     };
   }
 
@@ -169,11 +314,28 @@ class DialogueService {
 
       // Only export the clean dialogues structure, no metadata
       structure[filePath] = {
-        dialogues: dialogue.dialogues.map((d) => ({
-          type: d.type || "dialogue",
-          speaker: d.speaker,
-          text: d.text,
-        })),
+        dialogues: dialogue.dialogues.map((d) => {
+          if (d.type === "narration") {
+            return {
+              type: "narration",
+              text: d.text,
+            };
+          } else if (d.type === "character") {
+            return {
+              type: "character",
+              speaker: d.speaker,
+              text: d.text,
+            };
+          } else if (d.type === "choice") {
+            return {
+              type: "choice",
+              question: d.question,
+              options: d.options,
+              targetSequences: d.targetSequences,
+            };
+          }
+          return d;
+        }),
       };
     });
 
@@ -358,14 +520,28 @@ class DialogueService {
             text: `Location: ${scene} - ${sequence}`,
           },
           {
-            type: "dialogue",
-            speaker: "Character A",
-            text: "This is a sample dialogue line.",
+            type: "character",
+            speaker: "Holmes",
+            text: '"Elementary, my dear Watson."',
           },
           {
-            type: "dialogue",
-            speaker: "Character B",
-            text: "This is a response from another character.",
+            type: "character",
+            speaker: "Watson",
+            text: '"I see you\'ve been busy with your chemistry experiments again."',
+          },
+          {
+            type: "choice",
+            question: "How do you want to proceed with the investigation?",
+            options: [
+              '"Let\'s examine the crime scene more closely."',
+              '"We should interview the witnesses first."',
+              '"I think we need to check the victim\'s background."',
+            ],
+            targetSequences: [
+              "SCENE_02/SEQUENCE_05A",
+              "SCENE_02/SEQUENCE_05B",
+              "SCENE_02/SEQUENCE_05C",
+            ],
           },
         ],
       };
