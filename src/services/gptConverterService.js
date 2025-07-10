@@ -5,8 +5,12 @@ class GPTConverterService {
     this.baseURL = "https://api.openai.com/v1/chat/completions";
   }
 
-  async convertToJSON(inputText, currentScene = "SCENE_01") {
-    const prompt = this.buildPrompt(inputText, currentScene);
+  async convertToJSON(
+    inputText,
+    currentScene = "SCENE_01",
+    currentSequence = "SEQUENCE_01"
+  ) {
+    const prompt = this.buildPrompt(inputText, currentScene, currentSequence);
 
     try {
       const response = await fetch(this.baseURL, {
@@ -49,7 +53,10 @@ IMPORTANT RULES:
 - Only convert actual content (character speech, narrative descriptions, choice questions/options)
 - For character dialogue, extract the speaker name intelligently
 - For dialogue text, remove the surrounding quotes from the original text - do not include quotes in the JSON text field
-- For choices, generate appropriate target sequences based on the current scene
+- For choices, generate target sequences based on the current scene and sequence:
+  * If current scene is SCENE_01 and sequence is SEQUENCE_01 with 3 options, use: ["SCENE_01/SEQUENCE_01A", "SCENE_01/SEQUENCE_01B", "SCENE_01/SEQUENCE_01C"]
+  * If current scene is SCENE_02 and sequence is SEQUENCE_05 with 4 options, use: ["SCENE_02/SEQUENCE_05A", "SCENE_02/SEQUENCE_05B", "SCENE_02/SEQUENCE_05C", "SCENE_02/SEQUENCE_05D"]
+  * The number of target sequences must match the number of options exactly
 - Return ONLY valid JSON array, no explanations. Do not wrap the array in an object.
 - CRITICAL: Return the array directly, not wrapped in {"dialogues": [...]} or any other object structure.
 - The response should start with [ and end with ], not {.
@@ -150,13 +157,13 @@ IMPORTANT RULES:
     }
   }
 
-  buildPrompt(inputText, currentScene) {
-    return `Convert this text to JSON format. Current scene: ${currentScene}
+  buildPrompt(inputText, currentScene, currentSequence) {
+    return `Convert this text to JSON format. Current scene: ${currentScene}, Current sequence: ${currentSequence}
 
 Input text:
 ${inputText}
 
-Please analyze the text and convert it to the appropriate JSON format. If it's a choice, generate target sequences based on the current scene.`;
+Please analyze the text and convert it to the appropriate JSON format. If it's a choice, generate target sequences based on the current scene and sequence (e.g., if SCENE_01/SEQUENCE_01 with 3 options, use ["SCENE_01/SEQUENCE_01A", "SCENE_01/SEQUENCE_01B", "SCENE_01/SEQUENCE_01C"]).`;
   }
 }
 
