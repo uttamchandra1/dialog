@@ -50,7 +50,30 @@ IMPORTANT RULES:
 - For character dialogue, extract the speaker name intelligently
 - For dialogue text, remove the surrounding quotes from the original text - do not include quotes in the JSON text field
 - For choices, generate appropriate target sequences based on the current scene
-- Return ONLY valid JSON array, no explanations`,
+- Return ONLY valid JSON array, no explanations. Do not wrap the array in an object.
+- CRITICAL: Return the array directly, not wrapped in {"dialogues": [...]} or any other object structure.
+- The response should start with [ and end with ], not {.
+- NEVER wrap your response in a "dialogues" object.`,
+            },
+            {
+              role: "user",
+              content:
+                'Convert this: Holmes: "The game is afoot." Watson: "Indeed."',
+            },
+            {
+              role: "assistant",
+              content: `[
+  {
+    "type": "character",
+    "speaker": "Holmes",
+    "text": "The game is afoot."
+  },
+  {
+    "type": "character",
+    "speaker": "Watson",
+    "text": "Indeed."
+  }
+]`,
             },
             {
               role: "user",
@@ -67,7 +90,46 @@ IMPORTANT RULES:
 
       // Clean up the response and parse JSON
       const cleanedJson = jsonString.replace(/```json\n?|\n?```/g, "").trim();
-      const parsed = JSON.parse(cleanedJson);
+      let parsed = JSON.parse(cleanedJson);
+
+      console.log("Raw parsed response:", parsed); // Debug log
+
+      // Handle cases where the AI wraps the response in an object
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        console.log("Response is wrapped in object, extracting array..."); // Debug log
+
+        // Check for common wrapper keys
+        if (parsed.dialogues && Array.isArray(parsed.dialogues)) {
+          parsed = parsed.dialogues;
+          console.log("Extracted from 'dialogues' key"); // Debug log
+        } else if (parsed.data && Array.isArray(parsed.data)) {
+          parsed = parsed.data;
+          console.log("Extracted from 'data' key"); // Debug log
+        } else if (parsed.result && Array.isArray(parsed.result)) {
+          parsed = parsed.result;
+          console.log("Extracted from 'result' key"); // Debug log
+        } else if (parsed.content && Array.isArray(parsed.content)) {
+          parsed = parsed.content;
+          console.log("Extracted from 'content' key"); // Debug log
+        } else {
+          // If it's an object but not an array, try to extract any array property
+          const arrayKeys = Object.keys(parsed).filter((key) =>
+            Array.isArray(parsed[key])
+          );
+          if (arrayKeys.length > 0) {
+            parsed = parsed[arrayKeys[0]];
+            console.log(`Extracted from '${arrayKeys[0]}' key`); // Debug log
+          }
+        }
+      }
+
+      console.log("Final parsed result:", parsed); // Debug log
+
+      // Ensure we return an array
+      if (!Array.isArray(parsed)) {
+        console.error("Failed to extract array from response:", parsed);
+        throw new Error("Invalid response format - expected array");
+      }
 
       // Clean up any escaped quotes in text fields
       if (Array.isArray(parsed)) {

@@ -484,9 +484,12 @@ GPT will automatically detect the format and convert it appropriately.`}
             <div className="space-x-2">
               <button
                 onClick={() => {
-                  const exportData =
-                    DialogueService.createExportStructure(convertedJson);
-                  const jsonString = JSON.stringify(exportData, null, 2);
+                  // Export the raw array, not wrapped in dialogues object
+                  const jsonString = JSON.stringify(
+                    convertedJson.dialogues,
+                    null,
+                    2
+                  );
                   const blob = new Blob([jsonString], {
                     type: "application/json",
                   });
@@ -513,11 +516,7 @@ GPT will automatically detect the format and convert it appropriately.`}
           </div>
           <div className="bg-gray-50 rounded-md p-4 overflow-x-auto">
             <pre className="text-sm text-gray-800 whitespace-pre-wrap">
-              {JSON.stringify(
-                DialogueService.createExportStructure(convertedJson),
-                null,
-                2
-              )}
+              {JSON.stringify(convertedJson.dialogues, null, 2)}
             </pre>
           </div>
         </div>
