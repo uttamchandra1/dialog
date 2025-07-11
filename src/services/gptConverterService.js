@@ -42,7 +42,7 @@ Dialogue format:
 Choice format:
 {
   "type": "choice",
-  "question": "Question text?",
+  "question": "Question text?", // Only include if a question is present in the input. If not, omit this field.
   "options": ["option1", "option2", "option3"],
   "targetSequences": ["SCENE_X/SEQUENCE_YA", "SCENE_X/SEQUENCE_YB", "SCENE_X/SEQUENCE_YC"]
 }
@@ -57,6 +57,7 @@ IMPORTANT RULES:
   * If current scene is SCENE_01 and sequence is SEQUENCE_01 with 3 options, use: ["SCENE_01/SEQUENCE_01A", "SCENE_01/SEQUENCE_01B", "SCENE_01/SEQUENCE_01C"]
   * If current scene is SCENE_02 and sequence is SEQUENCE_05 with 4 options, use: ["SCENE_02/SEQUENCE_05A", "SCENE_02/SEQUENCE_05B", "SCENE_02/SEQUENCE_05C", "SCENE_02/SEQUENCE_05D"]
   * The number of target sequences must match the number of options exactly
+- For choices: Only include the "question" field if a question is present in the input. If not, omit the "question" field.
 - Return ONLY valid JSON array, no explanations. Do not wrap the array in an object.
 - CRITICAL: Return the array directly, not wrapped in {"dialogues": [...]} or any other object structure.
 - The response should start with [ and end with ], not {.
@@ -150,7 +151,8 @@ IMPORTANT RULES:
         });
       }
 
-      return parsed;
+      // Wrap the array in a dialogues object before returning
+      return { dialogues: parsed };
     } catch (error) {
       console.error("Error converting text to JSON:", error);
       throw new Error("Failed to convert text to JSON");
