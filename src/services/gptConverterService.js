@@ -58,10 +58,11 @@ IMPORTANT RULES:
   * If current scene is SCENE_02 and sequence is SEQUENCE_05 with 4 options, use: ["SCENE_02/SEQUENCE_05A", "SCENE_02/SEQUENCE_05B", "SCENE_02/SEQUENCE_05C", "SCENE_02/SEQUENCE_05D"]
   * The number of target sequences must match the number of options exactly
 - For choices: Only include the "question" field if a question is present in the input. If not, omit the "question" field.
-- Return ONLY valid JSON array, no explanations. Do not wrap the array in an object.
-- CRITICAL: Return the array directly, not wrapped in {"dialogues": [...]} or any other object structure.
-- The response should start with [ and end with ], not {.
-- NEVER wrap your response in a "dialogues" object.`,
+- Return ONLY valid JSON object with a "dialogues" key containing the array, no explanations.
+- The response should be wrapped as { "dialogues": [ ... ] }.
+- The response should start with { and end with }.
+- ALWAYS wrap your response in a "dialogues" object.
+`,
             },
             {
               role: "user",
@@ -100,59 +101,26 @@ IMPORTANT RULES:
       const cleanedJson = jsonString.replace(/```json\n?|\n?```/g, "").trim();
       let parsed = JSON.parse(cleanedJson);
 
-      console.log("Raw parsed response:", parsed); // Debug log
-
-      // Handle cases where the AI wraps the response in an object
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        console.log("Response is wrapped in object, extracting array..."); // Debug log
-
-        // Check for common wrapper keys
-        if (parsed.dialogues && Array.isArray(parsed.dialogues)) {
-          parsed = parsed.dialogues;
-          console.log("Extracted from 'dialogues' key"); // Debug log
-        } else if (parsed.data && Array.isArray(parsed.data)) {
-          parsed = parsed.data;
-          console.log("Extracted from 'data' key"); // Debug log
-        } else if (parsed.result && Array.isArray(parsed.result)) {
-          parsed = parsed.result;
-          console.log("Extracted from 'result' key"); // Debug log
-        } else if (parsed.content && Array.isArray(parsed.content)) {
-          parsed = parsed.content;
-          console.log("Extracted from 'content' key"); // Debug log
-        } else {
-          // If it's an object but not an array, try to extract any array property
-          const arrayKeys = Object.keys(parsed).filter((key) =>
-            Array.isArray(parsed[key])
-          );
-          if (arrayKeys.length > 0) {
-            parsed = parsed[arrayKeys[0]];
-            console.log(`Extracted from '${arrayKeys[0]}' key`); // Debug log
-          }
-        }
-      }
-
-      console.log("Final parsed result:", parsed); // Debug log
-
-      // Ensure we return an array
-      if (!Array.isArray(parsed)) {
-        console.error("Failed to extract array from response:", parsed);
-        throw new Error("Invalid response format - expected array");
+      // No need to unwrap, just check for the correct structure
+      if (!parsed || !Array.isArray(parsed.dialogues)) {
+        console.error(
+          "API response is not in the expected { dialogues: [...] } format:",
+          parsed
+        );
+        return { dialogues: [] }; // Return an empty array to avoid runtime errors
       }
 
       // Clean up any escaped quotes in text fields
-      if (Array.isArray(parsed)) {
-        parsed.forEach((item) => {
-          if (item.text) {
-            item.text = item.text.replace(/\\"/g, '"');
-          }
-          if (item.question) {
-            item.question = item.question.replace(/\\"/g, '"');
-          }
-        });
-      }
+      parsed.dialogues.forEach((item) => {
+        if (item.text) {
+          item.text = item.text.replace(/\\"/g, '"');
+        }
+        if (item.question) {
+          item.question = item.question.replace(/\\"/g, '"');
+        }
+      });
 
-      // Wrap the array in a dialogues object before returning
-      return { dialogues: parsed };
+      return parsed;
     } catch (error) {
       console.error("Error converting text to JSON:", error);
       throw new Error("Failed to convert text to JSON");

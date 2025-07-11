@@ -24,7 +24,7 @@ const DialogueConverter = () => {
     async (text, scene, sequence, title) => {
       try {
         const currentScene = `SCENE_${scene.padStart(2, "0")}`;
-        const jsonArray = await gptConverterService.convertToJSON(
+        const jsonResult = await gptConverterService.convertToJSON(
           text,
           currentScene
         );
@@ -32,11 +32,11 @@ const DialogueConverter = () => {
         return {
           metadata: {
             scene: `SCENE_${scene.padStart(2, "0")}`,
-            sequence: `SEQUENCE_${sequence.padStart(2, "0")}`,
+            sequence: `SEQUENCE_${sequence}`, // Use sequence as-is, don't pad
             title: title || `Dialogue ${scene}-${sequence}`,
             timestamp: new Date().toISOString(),
           },
-          dialogues: jsonArray,
+          dialogues: jsonResult.dialogues, // Extract the dialogues array from the result
         };
       } catch (error) {
         console.error("GPT conversion error:", error);
@@ -129,7 +129,7 @@ const DialogueConverter = () => {
       // Clear form for next entry
       setInputText("");
       setDialogueTitle("");
-      setSequenceNumber((prev) => String(parseInt(prev) + 1).padStart(2, "0"));
+      // Don't auto-increment sequence number since user might want custom formats
       setValidationErrors([]);
     } catch (error) {
       console.error("Batch conversion error:", error);
@@ -151,6 +151,8 @@ const DialogueConverter = () => {
       return;
     }
 
+    console.log("Exporting batch dialogues:", batchDialogues);
+
     const zip = new JSZip();
     const fileStructure =
       DialogueService.generateZipFileStructure(batchDialogues);
@@ -167,16 +169,32 @@ const DialogueConverter = () => {
   const handleExport = () => {
     if (!convertedJson) return;
 
-    const jsonString = JSON.stringify(convertedJson, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dialogue_${sceneNumber}_${sequenceNumber}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    console.log("DialogueService:", DialogueService);
+    console.log(
+      "exportToFileSystem method:",
+      DialogueService.exportToFileSystem
+    );
+
+    try {
+      // Use the DialogueService method for consistency
+      DialogueService.exportToFileSystem(
+        convertedJson,
+        `dialogue_${sceneNumber}_${sequenceNumber}.json` // Use sequence as-is
+      );
+    } catch (error) {
+      console.error("Export error:", error);
+      // Fallback to manual export if DialogueService fails
+      const jsonString = JSON.stringify(convertedJson, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dialogue_${sceneNumber}_${sequenceNumber}.json`; // Use sequence as-is
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -244,16 +262,17 @@ const DialogueConverter = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div>
+          {/* Sequence Input */}
+          <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Sequence Number
+              Sequence Number (e.g., 01, 06A, 6.1.1)
             </label>
             <input
-              type="number"
-              min="1"
+              type="text"
               value={sequenceNumber}
               onChange={(e) => setSequenceNumber(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="01, 06A, 6.1.1, etc."
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           <div className="md:col-span-2">
@@ -484,23 +503,38 @@ GPT will automatically detect the format and convert it appropriately.`}
             <div className="space-x-2">
               <button
                 onClick={() => {
-                  // Export the raw array, not wrapped in dialogues object
-                  const jsonString = JSON.stringify(
-                    convertedJson.dialogues,
-                    null,
-                    2
+                  console.log("DialogueService:", DialogueService);
+                  console.log(
+                    "exportToFileSystem method:",
+                    DialogueService.exportToFileSystem
                   );
-                  const blob = new Blob([jsonString], {
-                    type: "application/json",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `dialogue_${sceneNumber}_${sequenceNumber}.json`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
+
+                  try {
+                    // Export the raw array, not wrapped in dialogues object
+                    DialogueService.exportToFileSystem(
+                      convertedJson.dialogues,
+                      `dialogue_${sceneNumber}_${sequenceNumber}.json`
+                    );
+                  } catch (error) {
+                    console.error("Export error:", error);
+                    // Fallback to manual export if DialogueService fails
+                    const jsonString = JSON.stringify(
+                      convertedJson.dialogues,
+                      null,
+                      2
+                    );
+                    const blob = new Blob([jsonString], {
+                      type: "application/json",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `dialogue_${sceneNumber}_${sequenceNumber}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }
                 }}
                 className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
               >

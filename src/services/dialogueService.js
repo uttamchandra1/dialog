@@ -101,11 +101,11 @@ class DialogueService {
       sequencePath: `Dialogues/SCENE_${scene.padStart(
         2,
         "0"
-      )}/SEQUENCE_${sequence.padStart(2, "0")}`,
+      )}/SEQUENCE_${sequence}`, // Use sequence as-is
       filePath: `Dialogues/SCENE_${scene.padStart(
         2,
         "0"
-      )}/SEQUENCE_${sequence.padStart(2, "0")}/dialogue.json`,
+      )}/SEQUENCE_${sequence}/dialogue.json`, // Use sequence as-is
     };
   }
 
@@ -131,6 +131,9 @@ class DialogueService {
 
   static exportToFileSystem(jsonData, fileName) {
     // This would integrate with a backend service in a real application
+    console.log("Exporting data:", jsonData);
+    console.log("File name:", fileName);
+
     const jsonString = JSON.stringify(jsonData, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -266,7 +269,7 @@ class DialogueService {
     return {
       metadata: {
         scene: `SCENE_${scene.padStart(2, "0")}`,
-        sequence: `SEQUENCE_${sequence.padStart(2, "0")}`,
+        sequence: `SEQUENCE_${sequence}`, // Use sequence as-is
         title: title || `Dialogue ${scene}-${sequence}`,
         timestamp: new Date().toISOString(),
         totalDialogues: dialogues.length,
@@ -306,11 +309,19 @@ class DialogueService {
   static generateZipFileStructure(batchDialogues) {
     const structure = {};
 
-    batchDialogues.forEach((dialogue) => {
+    console.log("Batch dialogues:", batchDialogues);
+
+    batchDialogues.forEach((dialogue, index) => {
+      console.log(`Processing dialogue ${index}:`, dialogue);
+
       const { metadata } = dialogue;
       const scenePath = metadata.scene;
       const sequencePath = `${scenePath}/${metadata.sequence}`;
       const filePath = `${sequencePath}/dialogue.json`;
+
+      console.log("Dialogues to process:", dialogue.dialogues);
+      console.log("Type of dialogues:", typeof dialogue.dialogues);
+      console.log("Is array:", Array.isArray(dialogue.dialogues));
 
       // Only export the clean dialogues structure, no metadata
       structure[filePath] = {
